@@ -10,7 +10,9 @@
     var motorStatus = false;
     
     // Cleanup function when the extension is unloaded
-    ext._shutdown = function() {};
+    ext._shutdown = function() {
+        b.rcMotor('ALL', 'DISABLE');
+    };
 
     // Status reporting code
     // Use this to report missing hardware, plugin or unsupported browser
@@ -22,6 +24,50 @@
         ];
         var msg = msgs[boardStatus];
         return {status: boardStatus, msg: msg};
+    };
+
+    ext._deviceConnected = function() { };
+
+    ext._deviceRemoved = function() { };
+
+    ext.connect = function(address, callback) {
+        (function() {
+            var head = document.getElementsByTagName('head')[0];
+            var script = document.createElement('script');
+            script.type = 'text/javascript';
+            script.src = 'http://' + address + '/bonescript.js';
+            script.charset = 'UTF-8';
+            var scriptObj = head.appendChild(script);
+            scriptObj.onload = _onBonescriptLoaded;
+        }());
+
+        function _onBonescriptLoaded() {
+            _bonescript.on.connecting = bsError;
+            _bonescript.on.disconnect = bsDisconnected;
+            _bonescript.on.connect_failed = bsError;
+            _bonescript.on.error = bsError;
+            _bonescript.on.reconnect = bsError;
+            _bonescript.on.reconnect_failed = bsError;
+            _bonescript.on.reconnecting = bsError;
+            _bonescript.on.initialized = bsConnected;
+        }
+
+        function bsConnected() {
+            b = require('bonescript');
+            boardStatus = 2;
+            callback();
+        }
+
+        function bsDisconnected() {
+            b = null;
+            boardStatus = 1;
+        }
+
+        function bsError() {
+            b = null;
+            boardStatus = 0;
+            console.log("Unhandled BoneScript socket.io error");
+        }
     };
 
     ext.whenButton = function(button, action) {
@@ -43,6 +89,7 @@
     };
 
     ext.motor = function(motor, speed) {
+        if(!b) return;
         if(!motorStatus) {
             motorStatus = true;
             b.rcMotor('ALL', 'ENABLE', continueMotor);
@@ -62,12 +109,14 @@
     };
 
     ext.disableMotor = function(motor) {
+        if(!b) return;
         b.rcMotor(motor, 'FREE_SPIN');
     };
 
     // Block and block menu descriptions
     var descriptor = {
         blocks: [
+            ['w', 'connect to %s', 'connect', 'beaglebone.local'],
             ['h', 'when %m.button button %m.buttonAction', 'whenButton'],
             ['R', 'encoder %m.encoder', 'getEncoder'],
             [' ', 'set motor %m.motor speed %n', 'motor'],
